@@ -1,0 +1,57 @@
+# Single source of truth for every analytic parameter in the pipeline.
+# Nothing in src/loserpoint should hardcode a season range, window boundary,
+# or modeling choice — it should be read from here via utils.config.
+
+seasons:
+  # MoneyPuck shot-level data exists from 2007-08 onward.
+  modern_start: 2007
+  modern_end: 2024  # last completed season at build time; bump each offseason
+  # Hockey-Reference goal-timestamp data powers the pre-shot-tracking regime DiD.
+  historical_start: 1999
+  historical_end: 2006
+
+rule_change_dates:
+  # Verified against NHL.com rule history and Hockey-Reference league notes
+  # during the build; cited in docs/methodology.md.
+  loser_point_introduced: "1999-10-01"   # 1999-2000 season: OT loss = 1 point
+  shootout_introduced: "2005-10-01"      # 2005-06 season: shootout ends ties
+  row_tiebreaker_introduced: "2010-10-01" # 2010-11 season: regulation wins tiebreaker
+
+panel:
+  regulation_minutes: 60
+  # Boundary convention: minute N covers game time (N-1, N] in seconds, i.e.
+  # (60*(N-1), 60*N]. A goal at exactly 54:00.0 belongs to minute 54, not 55.
+  # See docs/decisions/ for the full rationale and off-by-one test coverage.
+  minute_boundary_convention: "half_open_right"
+  late_window_start_minute: 56   # default "late" window: minutes 56-60
+  late_window_end_minute: 60
+  score_state_bins: ["down_2_plus", "down_1", "tied", "up_1", "up_2_plus"]
+  situation_filter: "5v5"        # main spec is even-strength only; PP retained for robustness
+
+empty_net_policy:
+  default_mode: "exclude_pulled_and_empty_net"
+  modes:
+    - exclude_pulled_and_empty_net   # (a) default: drop shots at EN and by pulled-goalie team
+    - exclude_final_two_minutes      # (b) sensitivity: drop minutes 59-60 entirely
+    - include_all                    # (c) naive baseline, reported in robustness only
+
+validation:
+  reconciliation_sample_games_per_season: 200
+  hard_failure_mismatch_threshold: 0.02  # fraction of sampled games allowed to mismatch
+
+scraping:
+  hockey_reference:
+    min_request_interval_seconds: 4.0
+    user_agent: "loser-point-research/0.1 (personal academic project; contact via GitHub issues)"
+  nhl_api:
+    min_request_interval_seconds: 1.0
+    max_retries: 5
+    backoff_base_seconds: 2.0
+
+models:
+  main_outcome: "shot_attempts"       # secondary run repeats with xg_sum
+  clustering: "game_id"
+  playoff_probability_simulations: 5000
+  robustness:
+    late_window_sensitivity: [55, 56, 57, 58]
+    placebo_period: 2                 # placebo "late" window mid-second-period
