@@ -5,7 +5,7 @@
 > section should be cited until this notice is removed.
 
 Since 2005-06 the NHL has awarded 2 points for any win, 1 point for an
-overtime/shootout loss, and 0 for a regulation loss — a game that reaches
+overtime/shootout loss, and 0 for a regulation loss. A game that reaches
 overtime distributes 3 points instead of 2. Two teams tied late in the third
 period face a distorted incentive: play conservatively, reach overtime, and
 both leave with a guaranteed point. This project measures that distortion

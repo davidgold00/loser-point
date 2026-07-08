@@ -5,7 +5,7 @@
 seasons:
   # MoneyPuck shot-level data exists from 2007-08 onward.
   modern_start: 2007
-  modern_end: 2024  # last completed season at build time; bump each offseason
+  modern_end: 2025  # last completed season at build time (verified 2026-07-07); bump each offseason
   # Hockey-Reference goal-timestamp data powers the pre-shot-tracking regime DiD.
   historical_start: 1999
   historical_end: 2006

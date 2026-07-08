@@ -1539,6 +1539,7 @@ source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "lxml" },
+    { name = "matplotlib" },
     { name = "nhl-api-py" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -1571,6 +1572,7 @@ requires-dist = [
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.100" },
     { name = "jupyter", marker = "extra == 'dev'", specifier = ">=1.0" },
     { name = "lxml", specifier = ">=5.2" },
+    { name = "matplotlib", specifier = ">=3.8" },
     { name = "nhl-api-py", specifier = ">=1.2" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pandas", specifier = ">=2.2" },
