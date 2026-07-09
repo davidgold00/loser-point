@@ -51,6 +51,7 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: long-running statistical tests (simulate-and-recover)"]
 addopts = "--cov=src/loserpoint --cov-report=term-missing"
 
 [tool.coverage.report]

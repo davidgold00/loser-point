@@ -13,20 +13,19 @@ lint:
 test:
 	$(UV) run pytest
 
+# Phase 4 adds loserpoint.ingest.hockey_reference here; Phase 5 adds the
+# regime/heterogeneity/counterfactual analysis modules. Targets list only
+# modules that exist, so `make all` always works end to end.
 data:
 	$(UV) run python -m loserpoint.ingest.moneypuck
 	$(UV) run python -m loserpoint.ingest.nhl_api
-	$(UV) run python -m loserpoint.ingest.hockey_reference
 
 panel:
 	$(UV) run python -m loserpoint.panel.build_panel
+	$(UV) run python -m loserpoint.panel.context
 
 analysis:
-	$(UV) run python -m loserpoint.analysis.event_study
 	$(UV) run python -m loserpoint.analysis.models
-	$(UV) run python -m loserpoint.analysis.regime_did
-	$(UV) run python -m loserpoint.analysis.heterogeneity
-	$(UV) run python -m loserpoint.analysis.counterfactual
 	$(UV) run python -m loserpoint.analysis.robustness
 
 app:

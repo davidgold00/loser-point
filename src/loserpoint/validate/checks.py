@@ -189,6 +189,114 @@ def reconcile_season(
     )
 
 
+def reconcile_games_with_nhl_api(
+    games: pd.DataFrame, api_results: pd.DataFrame
+) -> list[SeasonReconciliation]:
+    """True cross-source reconciliation (the Phase-1 TODO): every game's
+    reconstructed final score and outcome flags versus the NHL API.
+
+    Score conventions differ by design: for shootout games the NHL API
+    credits the winner with the shootout decider (+1 goal), while
+    MoneyPuck's shot data leaves the score tied (decision 0003). The
+    comparison rules therefore are, per API `last_period_type`:
+
+    - REG: scores equal; reached_ot False; not a shootout.
+    - OT:  scores equal; reached_ot True; not a shootout.
+    - SO:  MoneyPuck score tied; API loser's score equals it; API winner
+           one higher; decided_by_shootout True; winners agree.
+
+    Interpretation: a clean pass here validates the entire chain at once --
+    MoneyPuck's raw data, ingest cleaning, goal-timeline reconstruction
+    (including phantom goals), and the OT/shootout outcome logic -- against
+    an independent source.
+    """
+    merged = games.merge(
+        api_results[api_results["game_type"] == 2].drop(columns=["game_type"]),
+        on=["season", "game_id"],
+        how="left",
+        suffixes=("", "_api"),
+    )
+    reconciliations = []
+    for season, chunk in merged.groupby("season"):
+        issues: list[ReconciliationIssue] = []
+        playable = chunk[~chunk["is_playoff"]]
+        unmatched = playable["home_score"].isna()
+        if unmatched.any():
+            issues.append(
+                ReconciliationIssue(
+                    "WARNING",
+                    int(season),
+                    "nhl_api_match",
+                    f"{int(unmatched.sum())} MoneyPuck games not found in the NHL API "
+                    f"schedule (game_ids {sorted(playable.loc[unmatched, 'game_id'].head(5))}).",
+                )
+            )
+        checked = playable[~unmatched]
+        n_failed = 0
+        for g in checked.itertuples(index=False):
+            ok, why = _game_matches_api(g)
+            if not ok:
+                n_failed += 1
+                if n_failed <= 10:  # cap the report noise; the count is what matters
+                    issues.append(
+                        ReconciliationIssue(
+                            "WARNING", int(season), "nhl_api_scores", f"game {g.game_id}: {why}"
+                        )
+                    )
+        issues.append(
+            ReconciliationIssue(
+                "INFO",
+                int(season),
+                "nhl_api_summary",
+                f"{len(checked) - n_failed}/{len(checked)} regular-season games "
+                "agree with the NHL API on score and outcome.",
+            )
+        )
+        reconciliations.append(
+            SeasonReconciliation(
+                season=int(season),
+                issues=issues,
+                n_games_sampled=len(checked),
+                n_games_failed=n_failed,
+            )
+        )
+    return reconciliations
+
+
+def _game_matches_api(g) -> tuple[bool, str]:
+    """Compare one merged game row against the API's record."""
+    api_home, api_away = int(g.home_score), int(g.away_score)
+    lpt = g.last_period_type
+    if lpt == "SO":
+        if not g.decided_by_shootout:
+            return False, "API says shootout; panel says not"
+        if g.final_home_goals != g.final_away_goals:
+            return False, "shootout game but MoneyPuck score not tied"
+        api_loser = min(api_home, api_away)
+        api_winner = max(api_home, api_away)
+        if api_loser != g.final_home_goals or api_winner != api_loser + 1:
+            return (
+                False,
+                f"SO score mismatch: API {api_home}-{api_away} vs MP "
+                f"{g.final_home_goals}-{g.final_away_goals}",
+            )
+        if g.home_won != (api_home > api_away):
+            return False, "shootout winner disagrees with API"
+        return True, ""
+    # REG and OT: scores must match exactly.
+    if (api_home, api_away) != (g.final_home_goals, g.final_away_goals):
+        return (
+            False,
+            f"score mismatch ({lpt}): API {api_home}-{api_away} vs MP "
+            f"{g.final_home_goals}-{g.final_away_goals}",
+        )
+    if lpt == "REG" and g.reached_ot:
+        return False, "API says regulation; panel says reached OT"
+    if lpt == "OT" and (not g.reached_ot or g.decided_by_shootout):
+        return False, "API says OT; panel outcome flags disagree"
+    return True, ""
+
+
 def write_validation_report(
     reconciliations: list[SeasonReconciliation],
     out_path: Path,

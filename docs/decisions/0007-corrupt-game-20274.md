@@ -44,3 +44,11 @@ layer; the ingest check remains a cheap early-warning.
 
 Regression test:
 `tests/unit/test_build_panel.py::test_corrupt_game_is_dropped_with_warning`.
+
+## Postscript (Phase 3 backfill)
+
+The full 19-season backfill surfaced two more games with the same
+duplicated-goal-row signature, both dropped by the same code path with
+the same logged warning: 2012 game 20288 and 2018 game 20670. Three
+corrupt games in 24,536 (~0.01%) — the drop-loudly policy generalized
+correctly beyond the game it was written for.

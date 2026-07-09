@@ -10,6 +10,15 @@ seasons:
   historical_start: 1999
   historical_end: 2006
 
+regime_split:
+  # First season of the "post" regime for the historical goals-based DiD
+  # (2005-06, the shootout's debut season). Pre-regime = historical_start
+  # through this minus one; post-regime = this through historical_end.
+  historical_post_start_season: 2005
+  # First season of the "post" regime for the ROW-tiebreaker natural
+  # experiment, run on the modern shot-attempt panel.
+  row_post_start_season: 2010
+
 rule_change_dates:
   # Verified against NHL.com rule history and Hockey-Reference league notes
   # during the build; cited in docs/methodology.md.
@@ -43,6 +52,11 @@ scraping:
   hockey_reference:
     min_request_interval_seconds: 4.0
     user_agent: "loser-point-research/0.1 (personal academic project; contact via GitHub issues)"
+    # Caps games fetched per season (deterministic random sample, fixed
+    # seed) so a full polite scrape (~1,230 games/season x 4s/request)
+    # doesn't take ~11 hours. null = full population (what `make data`
+    # runs unattended). See docs/decisions/0011-hockey-reference-scraper.md.
+    sample_games_per_season: 200
   nhl_api:
     min_request_interval_seconds: 1.0
     max_retries: 5

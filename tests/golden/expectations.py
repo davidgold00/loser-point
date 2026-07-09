@@ -13,8 +13,31 @@ the refactor is wrong, not the fixture. `home_states` lists
 
 The pre-2005 "historical tie" golden game cannot come from MoneyPuck
 (shot data starts 2007-08); it is added in Phase 4 alongside the
-Hockey-Reference scraper.
+Hockey-Reference scraper, in HISTORICAL_GOLDEN_GAMES below, and tested
+against `ingest.hockey_reference` directly (not the MoneyPuck ingest
+pipeline) in tests/golden/test_golden_historical.py.
 """
+
+# ------------------------------------------------------------------
+# Historical (Hockey-Reference) golden game: real pre-shootout tie.
+# NYR @ EDM, October 1, 1999. Goals: EDM (home) @ t=1317 (minute 22),
+# NYR (away) @ t=1601 (minute 27). Final 1-1; OT was played (5 min,
+# 4-on-4 sudden death under the rules in effect that season) but nobody
+# scored, so the game ended in a real tie -- exactly the outcome the
+# 1999 loser point was introduced to soften (each team banks 1 point).
+#   EDM@1317 min 22 -> up_1 entering 23     NYR@1601 min 27 -> tied entering 28
+HISTORICAL_GOLDEN_GAMES = {
+    ("1999", "199910010EDM"): {
+        "home_team": "EDM",
+        "home_states": [
+            (1, 22, "tied"),
+            (23, 27, "up_1"),
+            (28, 60, "tied"),
+        ],
+        "final_score": (1, 1),  # (home, away)
+        "is_tie": True,
+    },
+}
 
 GOLDEN_GAMES = {
     # ------------------------------------------------------------------

@@ -157,3 +157,36 @@ headline contrasts are now the within-tied late drop (clean through minute
 analysis in `docs/decisions/0008-late-window-control-selection.md`.
 Regression test:
 `test_descriptive.py::test_headline_windows_exclude_contaminated_minutes`.
+
+## 9. NHL API week iteration never terminated -- receding playoffEndDate (Phase 3)
+
+**Cause:** `fetch_season_game_results` walks the API's `nextStartDate`
+chain week by week and stopped when the week's date passed the response's
+`playoffEndDate`. But the chain never ends -- it rolls into the *next*
+season, and from then on each response reports that next season's
+`playoffEndDate`, so the stop condition receded forever. The 60-week
+runaway guard fired (loudly, as designed) on the very first real season.
+
+**Fix:** capture `playoffEndDate` from the first week's response only and
+compare against that fixed date. Regression test:
+`test_nhl_api.py::test_week_iteration_stops_despite_receding_playoff_end_date`.
+Silver lining: the failed run's 51 cached weeks made the re-run cheaper.
+
+## 10. Hockey-Reference client had no retry logic (Phase 4)
+
+**Cause:** the first real ~90-minute scrape run (1,400 games at
+4s/request) died at game 492/1400 on a single transient
+`Read timed out` connecting to hockey-reference.com. `HockeyReferenceClient.get()`
+had caching and rate-limiting but no retry -- any transient network
+blip, however brief, killed the entire multi-hour run and required a
+manual restart (which the on-disk cache made cheap, but still manual).
+This is the same class of robustness gap `ingest/nhl_api.py`'s client
+already solved in Phase 3 -- an oversight in not carrying that pattern
+over.
+
+**Fix:** added retry-with-backoff (`max_retries=4`,
+`retry_backoff_seconds=5.0` defaults) around the request itself, scoped
+to network exceptions only -- a non-200 HTTP response is still raised
+immediately without retrying, since retrying can't fix a wrong or blocked
+URL. Regression test:
+`test_hockey_reference.py::test_client_retries_transient_network_error_then_succeeds`.

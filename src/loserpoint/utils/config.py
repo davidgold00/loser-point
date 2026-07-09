@@ -85,6 +85,7 @@ class ValidationConfig:
 class Config:
     seasons: SeasonsConfig
     rule_change_dates: dict[str, str]
+    regime_split: dict[str, int]
     panel: PanelConfig
     empty_net_policy: EmptyNetPolicyConfig
     validation: ValidationConfig
@@ -132,6 +133,7 @@ def load_config(path: Path | str = DEFAULT_CONFIG_PATH) -> Config:
     return Config(
         seasons=seasons,
         rule_change_dates=raw["rule_change_dates"],
+        regime_split=raw["regime_split"],
         panel=panel,
         empty_net_policy=empty_net_policy,
         validation=validation,
