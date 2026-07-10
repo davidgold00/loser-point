@@ -227,6 +227,78 @@ def fetch_season_game_results(client: NHLApiClient, season: int) -> pd.DataFrame
     return df
 
 
+def parse_standings(response: dict, *, date: str) -> pd.DataFrame:
+    """Flatten one league_standings response into one row per team.
+
+    Field notes, verified against real responses across eras (see decision
+    0015): `conferenceName` is absent in 2020-21 (temporary divisions, no
+    conferences) -> None; division names carry sponsor prefixes that season
+    ("Scotia North"); `regulationPlusOtWins` exists in every modern season
+    even where the manifest says ROW wasn't yet an official tiebreaker.
+    """
+    rows = []
+    for team in response.get("standings", []):
+        rows.append(
+            {
+                "date": date,
+                "season": team["seasonId"] // 10000,
+                "team": team["teamAbbrev"]["default"],
+                "conference": team.get("conferenceName"),
+                "division": team["divisionName"],
+                "games_played": team["gamesPlayed"],
+                "points": team["points"],
+                "wins": team["wins"],
+                "losses": team["losses"],
+                "ot_losses": team["otLosses"],
+                "row_wins": team.get("regulationPlusOtWins"),
+                "goal_diff": team["goalDifferential"],
+                "league_sequence": team.get("leagueSequence"),
+                "conference_sequence": team.get("conferenceSequence"),
+                "division_sequence": team.get("divisionSequence"),
+                "wildcard_sequence": team.get("wildcardSequence"),
+                "clinch": team.get("clinchIndicator"),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def season_second_half_start_dates(game_results: pd.DataFrame) -> pd.Series:
+    """Each season's median regular-season game date (a Timestamp per season).
+
+    The pre-registered playoff-race hypothesis (decision 0014) is estimated
+    on each season's second half *by schedule*, not by calendar -- the
+    2012-13 lockout season and the COVID seasons have shifted calendars, so
+    a fixed month cutoff would misclassify them.
+    """
+    regular = game_results[game_results["game_type"] == REGULAR_SEASON]
+    return pd.to_datetime(regular["date"]).groupby(regular["season"]).median()
+
+
+def fetch_standings_history(client: NHLApiClient, dates: list[str]) -> pd.DataFrame:
+    """League standings for every date in `dates` (each cached on disk)."""
+    frames = []
+    for i, date in enumerate(sorted(dates)):
+        frames.append(parse_standings(client.league_standings(date), date=date))
+        if (i + 1) % 100 == 0:
+            logger.info("standings fetch: %d/%d dates done", i + 1, len(dates))
+    result = pd.concat(frames, ignore_index=True)
+    logger.info("standings fetch: %d dates -> %d team-date rows", len(dates), len(result))
+    return result
+
+
+def _pregame_standings_dates(game_results: pd.DataFrame) -> list[str]:
+    """Distinct (game date - 1 day) values for second-half regular-season
+    games -- the pre-game standings snapshots the playoff-race dimension
+    needs. First-half dates are not fetched: no registered hypothesis uses
+    them (decision 0014), and politeness argues for the minimal set."""
+    regular = game_results[game_results["game_type"] == REGULAR_SEASON].copy()
+    regular["date_ts"] = pd.to_datetime(regular["date"])
+    cutoffs = season_second_half_start_dates(game_results)
+    second_half = regular[regular["date_ts"] >= regular["season"].map(cutoffs)]
+    pregame = second_half["date_ts"] - pd.Timedelta(days=1)
+    return sorted(pregame.dt.strftime("%Y-%m-%d").unique())
+
+
 def main() -> None:
     from loserpoint.utils.config import load_config
     from loserpoint.utils.io import write_parquet
@@ -239,12 +311,22 @@ def main() -> None:
         max_retries=api_cfg["max_retries"],
         backoff_base_seconds=api_cfg["backoff_base_seconds"],
     )
-    frames = [
-        fetch_season_game_results(client, season)
-        for season in range(config.seasons.modern_start, config.seasons.modern_end + 1)
-    ]
+    seasons = range(config.seasons.modern_start, config.seasons.modern_end + 1)
+    frames = [fetch_season_game_results(client, season) for season in seasons]
     results = pd.concat(frames, ignore_index=True)
     write_parquet(results, Path("data/interim/nhl_api/game_results.parquet"))
+
+    manifest = client.season_manifest()
+    end_dates = []
+    for season in seasons:
+        season_id = season * 10000 + season + 1
+        entry = next(e for e in manifest if e.get("id") == season_id)
+        end_dates.append(entry["standingsEnd"])
+    season_end = fetch_standings_history(client, end_dates)
+    write_parquet(season_end, Path("data/interim/nhl_api/season_end_standings.parquet"))
+
+    pregame = fetch_standings_history(client, _pregame_standings_dates(results))
+    write_parquet(pregame, Path("data/interim/nhl_api/standings_by_date.parquet"))
 
 
 if __name__ == "__main__":

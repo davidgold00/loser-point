@@ -13,12 +13,12 @@ lint:
 test:
 	$(UV) run pytest
 
-# Phase 4 adds loserpoint.ingest.hockey_reference here; Phase 5 adds the
-# regime/heterogeneity/counterfactual analysis modules. Targets list only
-# modules that exist, so `make all` always works end to end.
+# Targets list every pipeline module in dependency order, so `make all`
+# works end to end from a clean checkout (network fetches are cached).
 data:
 	$(UV) run python -m loserpoint.ingest.moneypuck
 	$(UV) run python -m loserpoint.ingest.nhl_api
+	$(UV) run python -m loserpoint.ingest.hockey_reference
 
 panel:
 	$(UV) run python -m loserpoint.panel.build_panel
@@ -27,6 +27,10 @@ panel:
 analysis:
 	$(UV) run python -m loserpoint.analysis.models
 	$(UV) run python -m loserpoint.analysis.robustness
+	$(UV) run python -m loserpoint.analysis.regime_did
+	$(UV) run python -m loserpoint.analysis.row_experiment
+	$(UV) run python -m loserpoint.analysis.counterfactual
+	$(UV) run python -m loserpoint.analysis.heterogeneity
 
 app:
 	$(UV) run streamlit run app/streamlit_app.py

@@ -199,3 +199,131 @@ def test_league_standings_cached(tmp_path) -> None:
     assert fake.calls.count("standings:2014-01-15") == 1
     cached = json.loads((tmp_path / "league_standings_2014-01-15.json").read_text())
     assert cached == {"standings": []}
+
+
+def test_parse_standings_flattens_real_shape() -> None:
+    from loserpoint.ingest.nhl_api import parse_standings
+
+    response = {
+        "standings": [
+            {
+                "seasonId": 20132014,
+                "teamAbbrev": {"default": "BOS"},
+                "conferenceName": "Eastern",
+                "divisionName": "Atlantic",
+                "gamesPlayed": 82,
+                "points": 117,
+                "wins": 54,
+                "losses": 19,
+                "otLosses": 9,
+                "regulationPlusOtWins": 51,
+                "goalDifferential": 84,
+                "leagueSequence": 1,
+                "conferenceSequence": 1,
+                "divisionSequence": 1,
+                "wildcardSequence": 0,
+                "clinchIndicator": "p",
+            },
+            {
+                # 2020-21 shape: no conference, sponsor-named division
+                # (verified against the real API -- decision 0015).
+                "seasonId": 20202021,
+                "teamAbbrev": {"default": "COL"},
+                "divisionName": "Honda West",
+                "gamesPlayed": 56,
+                "points": 82,
+                "wins": 39,
+                "losses": 13,
+                "otLosses": 4,
+                "regulationPlusOtWins": 39,
+                "goalDifferential": 64,
+            },
+        ]
+    }
+    frame = parse_standings(response, date="2014-04-13")
+    assert len(frame) == 2
+    bos = frame.iloc[0]
+    assert bos["season"] == 2013
+    assert bos["team"] == "BOS"
+    assert bos["conference"] == "Eastern"
+    assert bos["points"] == 117
+    assert bos["row_wins"] == 51
+    import pandas as pd
+
+    col = frame.iloc[1]
+    assert col["season"] == 2020
+    assert pd.isna(col["conference"])  # pandas coerces the missing key's None to NaN
+    assert col["division"] == "Honda West"
+
+
+def test_season_second_half_start_dates_uses_schedule_median() -> None:
+    import pandas as pd
+    from loserpoint.ingest.nhl_api import season_second_half_start_dates
+
+    results = pd.DataFrame(
+        {
+            "season": [2012] * 4 + [2013] * 4,
+            # Lockout-style late calendar for 2012; normal for 2013. A
+            # playoff game (type 3) must not shift the median.
+            "date": [
+                "2013-01-19",
+                "2013-02-01",
+                "2013-03-01",
+                "2013-06-01",
+                "2013-10-01",
+                "2013-11-01",
+                "2014-01-01",
+                "2014-06-01",
+            ],
+            "game_type": [2, 2, 2, 3, 2, 2, 2, 3],
+        }
+    )
+    cutoffs = season_second_half_start_dates(results)
+    assert cutoffs[2012] == pd.Timestamp("2013-02-01")
+    assert cutoffs[2013] == pd.Timestamp("2013-11-01")
+
+
+def test_pregame_standings_dates_second_half_minus_one_day() -> None:
+    import pandas as pd
+    from loserpoint.ingest.nhl_api import _pregame_standings_dates
+
+    results = pd.DataFrame(
+        {
+            "season": [2013] * 3,
+            "date": ["2013-10-01", "2014-01-15", "2014-01-15"],
+            "game_type": [2, 2, 2],
+        }
+    )
+    dates = _pregame_standings_dates(results)
+    # Median date is 2014-01-15; only that (second-half) date survives,
+    # shifted back one day and deduplicated.
+    assert dates == ["2014-01-14"]
+
+
+def test_fetch_standings_history_concatenates_dates(tmp_path) -> None:
+    from loserpoint.ingest.nhl_api import fetch_standings_history
+
+    fake = FakeNhlpy()
+    fake.standings_payload = {
+        "standings": [
+            {
+                "seasonId": 20132014,
+                "teamAbbrev": {"default": "TOR"},
+                "conferenceName": "Eastern",
+                "divisionName": "Atlantic",
+                "gamesPlayed": 41,
+                "points": 50,
+                "wins": 24,
+                "losses": 15,
+                "otLosses": 2,
+                "regulationPlusOtWins": 20,
+                "goalDifferential": 5,
+            }
+        ]
+    }
+    fake.standings.league_standings = lambda date=None, season=None: fake.standings_payload
+    client = NHLApiClient(tmp_path, min_request_interval_seconds=0, client=fake)
+    frame = fetch_standings_history(client, ["2014-01-14", "2014-01-15"])
+    assert len(frame) == 2
+    assert sorted(frame["date"]) == ["2014-01-14", "2014-01-15"]
+    assert (frame["team"] == "TOR").all()
